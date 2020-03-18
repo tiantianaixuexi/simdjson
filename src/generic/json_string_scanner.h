@@ -13,6 +13,8 @@ struct json_string_block {
   really_inline uint64_t string_start() const { return _quote & ~_in_string; }
   // Only characters inside the string (not including the quotes)
   really_inline uint64_t string_content() const { return _in_string & ~_quote; }
+  // Whether the entire block is strings, or not
+  really_inline bool all_string() { return _in_string == 0xFFFFFFFFFFFFFFFFULL; }
   // Return a mask of whether the given characters are inside a string (only works on non-quotes)
   really_inline uint64_t non_quote_inside_string(uint64_t mask) const { return _in_string & mask; }
   // Tail of string (everything except the start quote)
@@ -33,6 +35,7 @@ class json_string_scanner {
 public:
   really_inline json_string_block next(const simd::simd8x64<uint8_t> in);
   really_inline error_code finish(bool streaming);
+  really_inline bool in_unclosed_string() { return prev_in_string; }
 
 private:
   really_inline uint64_t find_escaped(uint64_t escape);
@@ -71,6 +74,8 @@ private:
 // text           |  \\\ | \\\"\\\" \\\" \\"\\" |
 //
 really_inline uint64_t json_string_scanner::find_escaped(uint64_t backslash) {
+  if (!backslash) { uint64_t escaped = prev_escaped; prev_escaped = 0; return escaped; }
+
   // If there was overflow, pretend the first character isn't a backslash
   backslash &= ~prev_escaped;
   uint64_t follows_escape = backslash << 1 | prev_escaped;
@@ -96,16 +101,27 @@ really_inline uint64_t json_string_scanner::find_escaped(uint64_t backslash) {
 // Backslash sequences outside of quotes will be detected in stage 2.
 //
 really_inline json_string_block json_string_scanner::next(const simd::simd8x64<uint8_t> in) {
+  // Short circuit if there are no strings
+  const uint64_t quote = in.eq('"');
+  //if (!quote && !prev_in_string) { return { 0, 0, 0, 0 }; }
+
   const uint64_t backslash = in.eq('\\');
   const uint64_t escaped = find_escaped(backslash);
-  const uint64_t quote = in.eq('"') & ~escaped;
-  // prefix_xor flips on bits inside the string (and flips off the end quote).
-  // Then we xor with prev_in_string: if we were in a string already, its effect is flipped
-  // (characters inside strings are outside, and characters outside strings are inside).
-  const uint64_t in_string = prefix_xor(quote) ^ prev_in_string;
-  // right shift of a signed value expected to be well-defined and standard
-  // compliant as of C++20, John Regher from Utah U. says this is fine code
-  prev_in_string = static_cast<uint64_t>(static_cast<int64_t>(in_string) >> 63);
+  uint64_t in_string;
+  // Short circuit if there are only strings
+  //if (quote) {
+    // prefix_xor flips on bits inside the string (and flips off the end quote).
+    // Then we xor with prev_in_string: if we were in a string already, its effect is flipped
+    // (characters inside strings are outside, and characters outside strings are inside).
+    const uint64_t real_quote = quote & ~escaped;
+    in_string = prefix_xor(real_quote) ^ prev_in_string;
+    // right shift of a signed value expected to be well-defined and standard
+    // compliant as of C++20, John Regher from Utah U. says this is fine code
+    prev_in_string = static_cast<uint64_t>(static_cast<int64_t>(in_string) >> 63);
+//   } else {
+//     in_string = prev_in_string;
+//   }
+
   // Use ^ to turn the beginning quote off, and the end quote on.
   return {
     backslash,
@@ -116,7 +132,7 @@ really_inline json_string_block json_string_scanner::next(const simd::simd8x64<u
 }
 
 really_inline error_code json_string_scanner::finish(bool streaming) {
-  if (prev_in_string and (not streaming)) {
+  if (in_unclosed_string() and (not streaming)) {
     return UNCLOSED_STRING;
   }
   return SUCCESS;
