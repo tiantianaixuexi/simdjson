@@ -160,5 +160,8 @@ parsing decimal strings into binary floating-point values with proper rounding i
 our knowledge, it is not possible, in general, to parse streams of numbers at gigabytes per second
 using a single core. While using the simdjson library, it is possible that you might be limited to a
 few hundred megabytes per second if your JSON documents are densely packed with floating-point values.
-When possible, you should favor integer values written without a
-decimal point, as it simpler and faster to parse decimal integer values.
+
+
+- When possible, you should favor integer values written without a decimal point, as it simpler and faster to parse decimal integer values.
+- When serializing numbers, you should not use more digits than necessary: 17 digits is all that is needed to exactly represent double-precision floating-point numbers. Using many more digits than necessary will make your files larger and slower to parse.
+- When benchmarking parsing speeds, always report whether your JSON documents are made mostly of floating-point numbers when it is the case, since number parsing can then dominate the parsing time.
