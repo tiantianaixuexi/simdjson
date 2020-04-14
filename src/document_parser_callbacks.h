@@ -42,13 +42,15 @@ really_inline bool parser::on_start_document(uint32_t depth) noexcept {
 really_inline bool parser::on_start_object(uint32_t depth) noexcept {
   containing_scope[depth].tape_index = current_loc;
   containing_scope[depth].count = 0;
-  write_tape(0, internal::tape_type::START_OBJECT);
+  //write_tape(0, internal::tape_type::START_OBJECT);
+  current_loc++;
   return true;
 }
 really_inline bool parser::on_start_array(uint32_t depth) noexcept {
   containing_scope[depth].tape_index = current_loc;
   containing_scope[depth].count = 0;
-  write_tape(0, internal::tape_type::START_ARRAY);
+  //write_tape(0, internal::tape_type::START_ARRAY);
+  current_loc++;
   return true;
 }
 // TODO we're not checking this bool
@@ -62,13 +64,23 @@ really_inline bool parser::on_end_document(uint32_t depth) noexcept {
 really_inline bool parser::on_end_object(uint32_t depth) noexcept {
   // write our doc.tape location to the header scope
   write_tape(containing_scope[depth].tape_index, internal::tape_type::END_OBJECT);
-  end_scope(depth);
+  //end_scope(depth);
+  scope_descriptor d = containing_scope[depth];
+  // count can overflow if it exceeds 24 bits... so we saturate
+  // the convention being that a cnt of 0xffffff or more is undetermined in value (>=  0xffffff).
+  const uint32_t cntsat =  d.count > 0xFFFFFF ? 0xFFFFFF : d.count;
+  doc.tape[d.tape_index] = current_loc | (static_cast<uint64_t>(cntsat) << 32) | ((static_cast<uint64_t>(internal::tape_type::START_OBJECT)) << 56);;
   return true;
 }
 really_inline bool parser::on_end_array(uint32_t depth) noexcept {
   // write our doc.tape location to the header scope
   write_tape(containing_scope[depth].tape_index, internal::tape_type::END_ARRAY);
-  end_scope(depth);
+  //end_scope(depth);
+  scope_descriptor d = containing_scope[depth];
+  // count can overflow if it exceeds 24 bits... so we saturate
+  // the convention being that a cnt of 0xffffff or more is undetermined in value (>=  0xffffff).
+  const uint32_t cntsat =  d.count > 0xFFFFFF ? 0xFFFFFF : d.count;
+  doc.tape[d.tape_index] = current_loc | (static_cast<uint64_t>(cntsat) << 32) | ((static_cast<uint64_t>(internal::tape_type::START_ARRAY)) << 56);;
   return true;
 }
 
