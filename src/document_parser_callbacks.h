@@ -32,12 +32,14 @@ really_inline bool parser::on_start_document(uint32_t depth) noexcept {
 }
 really_inline bool parser::on_start_object(uint32_t depth) noexcept {
   containing_scope_offset[depth] = current_loc;
-  write_tape(0, internal::tape_type::START_OBJECT);
+  //write_tape(0, internal::tape_type::START_OBJECT);
+  current_loc++; // skip the store, we shall come back in on_end_object
   return true;
 }
 really_inline bool parser::on_start_array(uint32_t depth) noexcept {
   containing_scope_offset[depth] = current_loc;
-  write_tape(0, internal::tape_type::START_ARRAY);
+  //write_tape(0, internal::tape_type::START_ARRAY);
+  current_loc++; // skip the store, we shall come back in on_end_array
   return true;
 }
 // TODO we're not checking this bool
@@ -50,14 +52,18 @@ really_inline bool parser::on_end_document(uint32_t depth) noexcept {
 }
 really_inline bool parser::on_end_object(uint32_t depth) noexcept {
   // write our doc.tape location to the header scope
-  write_tape(containing_scope_offset[depth], internal::tape_type::END_OBJECT);
-  annotate_previous_loc(containing_scope_offset[depth], current_loc);
+  auto cso = containing_scope_offset[depth];
+  write_tape(cso, internal::tape_type::END_OBJECT);
+  //annotate_previous_loc(containing_scope_offset[depth], current_loc);
+  doc.tape[cso] = current_loc | ((static_cast<uint64_t>(internal::tape_type::START_OBJECT)) << 56);
   return true;
 }
 really_inline bool parser::on_end_array(uint32_t depth) noexcept {
   // write our doc.tape location to the header scope
-  write_tape(containing_scope_offset[depth], internal::tape_type::END_ARRAY);
-  annotate_previous_loc(containing_scope_offset[depth], current_loc);
+  auto cso = containing_scope_offset[depth];
+  write_tape(cso, internal::tape_type::END_ARRAY);
+  //annotate_previous_loc(containing_scope_offset[depth], current_loc);
+  doc.tape[cso] = current_loc | ((static_cast<uint64_t>(internal::tape_type::START_ARRAY)) << 56);
   return true;
 }
 
